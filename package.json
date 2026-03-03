@@ -1,0 +1,40 @@
+{
+  "name": "ar-yun-hui-ben",
+  "version": "1.0.0",
+  "description": "AR绘本扫描应用，支持3D模型显示、动画控制和视频播放",
+  "main": "index.js",
+  "homepage": "https://yaoyao-yyds.github.io/ArYunHuiBen",
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "quick-setup": "node scripts/quick-test.js",
+    "deploy": "npm run build && npx serve -s build",
+    "predeploy": "npm run build",
+    "deploy:gh-pages": "gh-pages -d build"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.80.0",
+    "@react-three/fiber": "^8.13.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "^5.0.1",
+    "three": "^0.155.0"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
