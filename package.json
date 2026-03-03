@@ -15,12 +15,12 @@
     "deploy:gh-pages": "gh-pages -d build"
   },
   "dependencies": {
-    "@react-three/drei": "^9.80.0",
+    "@react-three/drei": "^9.88.0",
     "@react-three/fiber": "^8.13.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "^5.0.1",
-    "three": "^0.155.0"
+    "three": "^0.160.1"
   },
   "devDependencies": {
     "gh-pages": "^6.3.0"
