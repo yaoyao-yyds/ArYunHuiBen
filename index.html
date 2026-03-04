@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AR绘本 - 完整交互版</title>
+    <title>AR绘本 - 稳定版</title>
 
     <!-- 引入 A-Frame -->
     <script src="https://cdn.jsdelivr.net/npm/aframe@1.4.0/dist/aframe-master.min.js"></script>
+    <!-- 引入 A-Frame Extras (用于 animation-mixer) -->
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.0.0/dist/aframe-extras.min.js"></script>
     <!-- 引入 AR.js -->
     <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@master/aframe/build/aframe-ar.js"></script>
 
@@ -17,23 +19,28 @@
         #status {
             position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.7); color: #fff;
-            padding: 8px 16px; border-radius: 20px; font-size: 14px;
+            padding: 10px 20px; border-radius: 20px; font-size: 14px;
             z-index: 999; pointer-events: none;
-            transition: background 0.3s;
+            transition: all 0.3s;
+            white-space: nowrap;
         }
         #status.found { background: rgba(40, 167, 69, 0.9); }
 
         /* 底部控制面板 */
         #controls {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 20px;
-            display: flex; gap: 10px; z-index: 999;
+            background: rgba(0,0,0,0.7); padding: 10px 15px; border-radius: 25px;
+            display: flex; gap: 12px; z-index: 999;
+            backdrop-filter: blur(10px);
         }
         .btn {
-            width: 45px; height: 45px; border-radius: 50%; border: none;
-            background: rgba(255,255,255,0.2); color: #fff; font-size: 18px;
+            width: 50px; height: 50px; border-radius: 50%; border: none;
+            background: rgba(255,255,255,0.2); color: #fff; font-size: 20px;
             cursor: pointer; touch-action: none;
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .btn:active { 
             background: rgba(255,255,255,0.5);
@@ -53,36 +60,93 @@
         /* 提示文字 */
         .hint {
             position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
-            color: rgba(255,255,255,0.6); font-size: 12px;
+            color: rgba(255,255,255,0.7); font-size: 13px;
             pointer-events: none; z-index: 999; text-align: center;
+            background: rgba(0,0,0,0.5);
+            padding: 8px 16px;
+            border-radius: 15px;
+            line-height: 1.6;
         }
+        
+        /* 加载提示 */
+        #loading {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff; z-index: 9999;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            transition: opacity 0.5s;
+        }
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .spinner {
+            width: 50px; height: 50px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #loading-text { font-size: 16px; margin-bottom: 10px; }
+        #loading-progress { font-size: 12px; opacity: 0.8; }
     </style>
 </head>
 <body>
-    <div id="status">请将摄像头对准识别图</div>
-    <div class="hint">👆 点击模型播放动画<br>👌 双指捏合缩放 | 双指旋转</div>
-
-    <div id="controls">
-        <button class="btn" onclick="adjustScale(0.1)">+</button>
-        <button class="btn" onclick="adjustScale(-0.1)">−</button>
-        <button class="btn" onclick="adjustRotation(30)">↻</button>
-        <button class="btn" id="anim-btn" onclick="toggleAnim()">▶</button>
-        <button class="btn" onclick="resetModel()">⟲</button>
+    <!-- 加载提示 -->
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="loading-text">正在初始化AR环境...</div>
+        <div id="loading-progress">请稍候</div>
     </div>
 
+    <div id="status">准备就绪</div>
+    <div class="hint">
+        👆 点击模型播放动画<br>
+        👌 双指捏合缩放 | 双指旋转<br>
+        👆 单指滑动360°旋转模型
+    </div>
+
+    <div id="controls">
+        <button class="btn" id="btn-zoom-in" title="放大">+</button>
+        <button class="btn" id="btn-zoom-out" title="缩小">−</button>
+        <button class="btn" id="btn-rotate-left" title="左旋转">↺</button>
+        <button class="btn" id="btn-rotate-right" title="右旋转">↻</button>
+        <button class="btn" id="anim-btn" title="播放动画">▶</button>
+        <button class="btn" id="btn-reset" title="重置">⟲</button>
+    </div>
+
+    <!-- A-Frame 场景 -->
+    <!-- 关键修改：添加 loading-screen="enabled: false" 禁用A-Frame默认加载界面 -->
+    <!-- 添加 timeout="30000" 设置资源加载超时 -->
     <a-scene
         embedded
+        loading-screen="enabled: false"
         arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
         vr-mode-ui="enabled: false"
         renderer="logarithmicDepthBuffer: true; antialias: true; alpha: true"
     >
-        <a-assets>
-            <a-asset-item id="model-asset" src="https://img.xiaotianfx.cn/3d/book1.glb"></a-asset-item>
-            <video id="ar-video"
-                   src="https://img.xiaotianfx.cn/miyun/sp1.mp4"
-                   loop crossorigin="anonymous" playsinline></video>
+        <!-- 资源定义 -->
+        <!-- 关键修改：添加 timeout 防止资源加载卡死 -->
+        <a-assets timeout="10000">
+            <a-asset-item 
+                id="model-asset" 
+                src="https://img.xiaotianfx.cn/3d/book1.glb"
+                preload="auto"
+            ></a-asset-item>
+            <video 
+                id="ar-video"
+                src="https://img.xiaotianfx.cn/miyun/sp1.mp4"
+                preload="auto"
+                loop 
+                crossorigin="anonymous" 
+                playsinline
+            ></video>
         </a-assets>
 
+        <!-- Hiro 标记识别 -->
         <a-marker preset="hiro" id="ar-marker">
             
             <!-- 1. 3D模型容器 -->
@@ -93,15 +157,15 @@
                     position="0 0.5 0"
                     class="clickable"
                     animation-mixer="clip: *; loop: repeat; timeScale: 0"
-                    cursor-listener
+                    click-handler
                 ></a-entity>
             </a-entity>
 
-            <!-- 2. 视频平面 (修改重点在这里) -->
+            <!-- 2. 视频平面 -->
             <a-video
                 src="#ar-video"
-                position="0 0.5 -1"      <!-- Z轴设为-1，让视频退到模型后方 -->
-                rotation="0 0 0"        <!-- 保持竖直 -->
+                position="0 0.5 -1"
+                rotation="0 0 0"
                 width="1.6"
                 height="0.9"
                 opacity="0.9"
@@ -109,233 +173,413 @@
 
         </a-marker>
 
-        <a-entity camera></a-entity>
+        <!-- 相机 -->
+        <a-entity camera>
+            <a-entity cursor="rayOrigin: mouse; fuse: false" raycaster="objects: .clickable"></a-entity>
+        </a-entity>
     </a-scene>
 
     <script>
-        // === 注册A-Frame组件:点击监听器 ===
-        AFRAME.registerComponent('cursor-listener', {
-            init: function () {
-                this.el.addEventListener('click', function (evt) {
-                    console.log('模型被点击了!');
-                    toggleAnim();
-                });
-                // 同时监听mousedown以增加兼容性
-                this.el.addEventListener('mousedown', function (evt) {
-                    console.log('模型被按下!');
-                    toggleAnim();
-                });
-            }
-        });
-
-        // === 状态管理 ===
+        // ============================================
+        // 全局变量（先声明）
+        // ============================================
         const state = { 
             scale: 0.5, 
-            rotation: 0, 
+            rotationY: 0,
+            rotationX: 0,
             isPlaying: false,
-            isMarkerFound: false 
+            isMarkerFound: false,
+            modelLoaded: false,
+            initialized: false,
+            mixer: null
         };
         
-        // === 获取DOM元素 ===
-        let modelWrapper, model, video, status, marker, animBtn;
+        // 注册自定义点击组件
+        AFRAME.registerComponent('click-handler', {
+            init: function () {
+                this.el.addEventListener('click', function (evt) {
+                    console.log('🎯 模型被点击了 (click-handler)');
+                    evt.stopPropagation();
+                    toggleAnim();
+                });
+                
+                this.el.addEventListener('mousedown', function (evt) {
+                    console.log('🎯 模型被按下 (click-handler)');
+                    evt.stopPropagation();
+                    toggleAnim();
+                });
+            },
+            tick: function (time, timeDelta) {
+                // 如果使用了备用mixer，需要在这里更新它
+                if (state.mixer && state.isPlaying) {
+                    state.mixer.update(timeDelta / 1000);
+                }
+            }
+        });
         
-        // === 触摸手势变量 ===
-        let touchStartDistance = 0;
-        let touchStartRotation = 0;
-        let lastScale = 0.5;
-        let lastRotation = 0;
+        const elements = {};
+        
+        const touch = {
+            startDistance: 0,
+            startAngle: 0,
+            lastScale: 0.5,
+            lastRotationY: 0,
+            startX: 0,
+            startY: 0,
+            isMoving: false
+        };
 
-        // === 等待场景加载完成 ===
-        document.addEventListener('DOMContentLoaded', function() {
-            const scene = document.querySelector('a-scene');
+        // ============================================
+        // 1. 页面加载后立即初始化（不等待场景）
+        // ============================================
+        window.addEventListener('load', function() {
+            console.log('✅ Window loaded');
             
-            scene.addEventListener('loaded', function() {
-                console.log('A-Frame场景已加载');
-                
-                // 获取DOM元素
-                modelWrapper = document.getElementById('model-wrapper');
-                model = document.getElementById('model');
-                video = document.getElementById('ar-video');
-                status = document.getElementById('status');
-                marker = document.getElementById('ar-marker');
-                animBtn = document.getElementById('anim-btn');
-                
-                // 绑定标记识别事件
-                setupMarkerEvents();
-            });
+            // 直接获取元素（不等待A-Frame）
+            elements.modelWrapper = document.getElementById('model-wrapper');
+            elements.model = document.getElementById('model');
+            elements.video = document.getElementById('ar-video');
+            elements.status = document.getElementById('status');
+            elements.marker = document.getElementById('ar-marker');
+            elements.animBtn = document.getElementById('anim-btn');
+            elements.loading = document.getElementById('loading');
+            elements.loadingText = document.getElementById('loading-text');
+            elements.loadingProgress = document.getElementById('loading-progress');
+            
+            // 立即绑定事件
+            setupButtonEvents();
+            setupTouchGestures();
+            
+            // 延迟检查场景状态
+            setTimeout(checkSceneStatus, 100);
         });
 
-        function setupMarkerEvents() {
-            if (!marker) return;
-
-            // === 1. 标记识别事件 ===
-            marker.addEventListener('markerFound', () => {
-                state.isMarkerFound = true;
-                status.textContent = '✓ 识别成功! 点击模型查看动画';
-                status.classList.add('found');
-                video.play().catch(() => {});
+        // ============================================
+        // 2. 场景状态检查（轮询方式）
+        // ============================================
+        function checkSceneStatus() {
+            const scene = document.querySelector('a-scene');
+            
+            if (!scene) {
+                updateLoadingProgress('等待场景初始化...');
+                setTimeout(checkSceneStatus, 100);
+                return;
+            }
+            
+            console.log('场景状态:', {
+                hasLoaded: scene.hasLoaded,
+                isLoading: scene.isLoading
             });
+            
+            if (scene.hasLoaded || !scene.isLoading) {
+                // 场景已加载或不在加载中
+                initScene();
+            } else {
+                // 继续等待
+                updateLoadingProgress('正在加载AR组件...');
+                setTimeout(checkSceneStatus, 100);
+            }
+        }
 
-            marker.addEventListener('markerLost', () => {
-                state.isMarkerFound = false;
-                status.textContent = '请将摄像头对准识别图';
-                status.classList.remove('found');
-                video.pause();
+        // ============================================
+        // 3. 初始化场景
+        // ============================================
+        function initScene() {
+            if (state.initialized) return;
+            state.initialized = true;
+            
+            console.log('✅ 初始化场景');
+            updateLoadingProgress('AR环境就绪');
+            
+            // 绑定标记事件
+            setupMarkerEvents();
+            
+            // 绑定模型事件
+            setupModelEvents();
+            
+            // 隐藏加载界面（延迟一下确保用户能看到）
+            setTimeout(hideLoading, 500);
+        }
+
+        function updateLoadingProgress(text) {
+            if (elements.loadingProgress) {
+                elements.loadingProgress.textContent = text;
+            }
+        }
+
+        function hideLoading() {
+            if (elements.loading) {
+                elements.loading.classList.add('hidden');
+            }
+            console.log('✅ 加载界面已隐藏');
+        }
+
+        // ============================================
+        // 4. 强制隐藏加载界面（10秒超时）
+        // ============================================
+        setTimeout(function() {
+            if (!state.initialized) {
+                console.warn('⚠️ 初始化超时，强制启动');
+                state.initialized = true;
+                hideLoading();
+                
+                // 尝试初始化
+                if (elements.model) setupModelEvents();
+                if (elements.marker) setupMarkerEvents();
+            }
+        }, 10000);
+
+        // ============================================
+        // 5. 模型事件
+        // ============================================
+        function setupModelEvents() {
+            if (!elements.model) return;
+            
+            console.log('绑定模型事件');
+            
+            // 模型加载完成
+            elements.model.addEventListener('model-loaded', function(e) {
+                console.log('✅ 模型加载完成');
+                state.modelLoaded = true;
+                
+                const mesh = elements.model.getObject3D('mesh');
+                if (mesh && mesh.animations && mesh.animations.length > 0) {
+                    console.log('📋 动画数量:', mesh.animations.length);
+                    updateStatus('✓ 模型已加载，点击播放动画');
+                } else {
+                    console.warn('⚠️ 模型无动画');
+                    updateStatus('⚠️ 模型无动画数据');
+                }
+            });
+            
+            // 模型加载失败
+            elements.model.addEventListener('model-error', function(e) {
+                console.error('❌ 模型加载失败');
+                updateStatus('❌ 模型加载失败');
             });
         }
 
-        // === 2. 按钮控制 ===
-        function adjustScale(delta) {
-            if (!modelWrapper) {
-                console.warn('modelWrapper未加载');
-                return;
+        // ============================================
+        // 6. 标记识别事件
+        // ============================================
+        function setupMarkerEvents() {
+            if (!elements.marker) return;
+            
+            console.log('绑定标记事件');
+            
+            elements.marker.addEventListener('markerFound', () => {
+                console.log('✅ 标记已识别');
+                state.isMarkerFound = true;
+                updateStatus('✓ 识别成功！点击模型播放动画', true);
+                
+                if (elements.video) {
+                    elements.video.play().catch(e => {
+                        console.log('视频播放:', e.message);
+                    });
+                }
+            });
+
+            elements.marker.addEventListener('markerLost', () => {
+                console.log('❌ 标记丢失');
+                state.isMarkerFound = false;
+                updateStatus('请将摄像头对准识别图', false);
+                
+                if (elements.video) {
+                    elements.video.pause();
+                }
+            });
+        }
+
+        // ============================================
+        // 7. 按钮事件
+        // ============================================
+        function setupButtonEvents() {
+            console.log('绑定按钮事件');
+            
+            document.getElementById('btn-zoom-in')?.addEventListener('click', () => adjustScale(0.1));
+            document.getElementById('btn-zoom-out')?.addEventListener('click', () => adjustScale(-0.1));
+            document.getElementById('btn-rotate-left')?.addEventListener('click', () => adjustRotation(-45));
+            document.getElementById('btn-rotate-right')?.addEventListener('click', () => adjustRotation(45));
+            document.getElementById('anim-btn')?.addEventListener('click', toggleAnim);
+            document.getElementById('btn-reset')?.addEventListener('click', resetModel);
+        }
+
+        // ============================================
+        // 8. 触摸手势
+        // ============================================
+        function setupTouchGestures() {
+            console.log('绑定触摸手势');
+            
+            document.addEventListener('touchstart', handleTouchStart, { passive: false });
+            document.addEventListener('touchmove', handleTouchMove, { passive: false });
+            document.addEventListener('touchend', handleTouchEnd, { passive: false });
+        }
+
+        function handleTouchStart(e) {
+            if (!state.isMarkerFound) return;
+            
+            if (e.touches.length === 1) {
+                touch.startX = e.touches[0].clientX;
+                touch.startY = e.touches[0].clientY;
+                touch.isMoving = false;
+            } else if (e.touches.length === 2) {
+                e.preventDefault();
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                touch.startDistance = Math.sqrt(dx * dx + dy * dy);
+                touch.startAngle = Math.atan2(dy, dx);
+                touch.lastScale = state.scale;
+                touch.lastRotationY = state.rotationY;
             }
-            state.scale = Math.min(2, Math.max(0.1, state.scale + delta));
+        }
+
+        function handleTouchMove(e) {
+            if (!state.isMarkerFound) return;
+            
+            if (e.touches.length === 1) {
+                e.preventDefault();
+                const currentX = e.touches[0].clientX;
+                const currentY = e.touches[0].clientY;
+                const deltaX = currentX - touch.startX;
+                const deltaY = currentY - touch.startY;
+                
+                if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+                    touch.isMoving = true;
+                    state.rotationY += deltaX * 0.5;
+                    updateTransform();
+                    touch.startX = currentX;
+                    touch.startY = currentY;
+                }
+            } else if (e.touches.length === 2) {
+                e.preventDefault();
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                
+                // 缩放
+                const currentDistance = Math.sqrt(dx * dx + dy * dy);
+                const scaleRatio = currentDistance / touch.startDistance;
+                state.scale = Math.max(0.1, Math.min(2, touch.lastScale * scaleRatio));
+                
+                // 旋转
+                let angleDelta = Math.atan2(dy, dx) - touch.startAngle;
+                if (angleDelta > Math.PI) angleDelta -= 2 * Math.PI;
+                if (angleDelta < -Math.PI) angleDelta += 2 * Math.PI;
+                state.rotationY = touch.lastRotationY + angleDelta * (180 / Math.PI) * 2;
+                
+                updateTransform();
+            }
+        }
+
+        function handleTouchEnd(e) {
+            if (e.touches.length === 0) {
+                touch.isMoving = false;
+            }
+        }
+
+        // ============================================
+        // 9. 辅助函数
+        // ============================================
+        function updateStatus(text, found = false) {
+            if (elements.status) {
+                elements.status.textContent = text;
+                elements.status.classList.toggle('found', found);
+            }
+        }
+
+        function adjustScale(delta) {
+            if (!state.isMarkerFound) return;
+            state.scale = Math.max(0.1, Math.min(2, state.scale + delta));
             updateTransform();
-            console.log('缩放:', state.scale);
         }
 
         function adjustRotation(delta) {
-            if (!modelWrapper) {
-                console.warn('modelWrapper未加载');
-                return;
-            }
-            state.rotation += delta;
+            if (!state.isMarkerFound) return;
+            state.rotationY += delta;
             updateTransform();
-            console.log('旋转:', state.rotation);
         }
 
         function updateTransform() {
-            if (!modelWrapper) return;
-            modelWrapper.setAttribute('scale', `${state.scale} ${state.scale} ${state.scale}`);
-            modelWrapper.setAttribute('rotation', `0 ${state.rotation} 0`);
+            if (elements.modelWrapper) {
+                elements.modelWrapper.setAttribute('scale', 
+                    `${state.scale} ${state.scale} ${state.scale}`);
+                elements.modelWrapper.setAttribute('rotation', 
+                    `${state.rotationX} ${state.rotationY} 0`);
+            }
         }
 
-        // === 3. 动画控制(优化后) ===
         function toggleAnim() {
-            console.log('toggleAnim被调用, isMarkerFound:', state.isMarkerFound);
-            
-            if (!model || !animBtn) {
-                console.warn('model或animBtn未加载');
-                return;
-            }
-            
-            if (!state.isMarkerFound) {
-                if (status) status.textContent = '⚠️ 请先识别标记图';
-                console.warn('标记未识别');
+            if (!state.modelLoaded) {
+                updateStatus('⏳ 模型加载中...');
                 return;
             }
             
             state.isPlaying = !state.isPlaying;
-            console.log('动画状态:', state.isPlaying ? '播放' : '暂停');
             
-            // 更新动画播放速度
-            model.setAttribute('animation-mixer', {
-                clip: '*',
-                loop: 'repeat',
-                timeScale: state.isPlaying ? 1 : 0
-            });
+            if (elements.model) {
+                // 使用 aframe-extras 的 animation-mixer
+                elements.model.setAttribute('animation-mixer', {
+                    clip: '*',
+                    loop: 'repeat',
+                    timeScale: state.isPlaying ? 1 : 0,
+                    crossFadeDuration: 0.3
+                });
+                
+                // 备用方案：直接操作 Three.js 的 AnimationMixer
+                const mesh = elements.model.getObject3D('mesh');
+                if (mesh && mesh.animations && mesh.animations.length > 0) {
+                    // 如果组件没有自动创建mixer，我们手动处理
+                    if (!elements.model.components['animation-mixer']) {
+                        if (!state.mixer) {
+                            state.mixer = new THREE.AnimationMixer(mesh);
+                            // 播放所有动画
+                            mesh.animations.forEach((clip) => {
+                                const action = state.mixer.clipAction(clip);
+                                action.play();
+                            });
+                        }
+                        state.mixer.timeScale = state.isPlaying ? 1 : 0;
+                    }
+                }
+            }
             
-            // 更新按钮状态
-            animBtn.textContent = state.isPlaying ? '⏸' : '▶';
-            animBtn.classList.toggle('playing', state.isPlaying);
+            if (elements.animBtn) {
+                elements.animBtn.textContent = state.isPlaying ? '⏸' : '▶';
+                elements.animBtn.classList.toggle('playing', state.isPlaying);
+            }
             
-            // 更新状态提示
-            if (status) status.textContent = state.isPlaying ? '▶ 动画播放中...' : '⏸ 动画已暂停';
+            updateStatus(state.isPlaying ? '▶ 动画播放中...' : '⏸ 动画已暂停');
         }
 
         function resetModel() {
-            if (!model || !modelWrapper || !animBtn) {
-                console.warn('元素未加载');
-                return;
-            }
-            
             state.scale = 0.5;
-            state.rotation = 0;
+            state.rotationY = 0;
+            state.rotationX = 0;
             state.isPlaying = false;
             
             updateTransform();
             
-            model.setAttribute('animation-mixer', {
-                clip: '*',
-                loop: 'repeat',
-                timeScale: 0
-            });
+            if (elements.model) {
+                elements.model.setAttribute('animation-mixer', { timeScale: 0 });
+                
+                // 重置备用mixer
+                if (state.mixer) {
+                    state.mixer.timeScale = 0;
+                    state.mixer.stopAllAction();
+                }
+            }
             
-            animBtn.textContent = '▶';
-            animBtn.classList.remove('playing');
-            if (status) status.textContent = '⟲ 已重置模型';
-            console.log('模型已重置');
+            if (elements.animBtn) {
+                elements.animBtn.textContent = '▶';
+                elements.animBtn.classList.remove('playing');
+            }
+            
+            updateStatus('⟲ 模型已重置');
         }
 
-
-        // === 4. 触摸手势控制(重写优化) ===
-        document.addEventListener('touchstart', (e) => {
-            if (!state.isMarkerFound || e.touches.length !== 2) return;
-            
-            e.preventDefault();
-            
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            
-            // 计算初始距离和角度
-            const dx = touch1.clientX - touch2.clientX;
-            const dy = touch1.clientY - touch2.clientY;
-            
-            touchStartDistance = Math.sqrt(dx * dx + dy * dy);
-            touchStartRotation = Math.atan2(dy, dx);
-            
-            lastScale = state.scale;
-            lastRotation = state.rotation;
-            
-        }, { passive: false });
-
-        document.addEventListener('touchmove', (e) => {
-            if (!state.isMarkerFound || e.touches.length !== 2) return;
-            
-            e.preventDefault();
-            
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            
-            const dx = touch1.clientX - touch2.clientX;
-            const dy = touch1.clientY - touch2.clientY;
-            
-            // 计算当前距离和角度
-            const currentDistance = Math.sqrt(dx * dx + dy * dy);
-            const currentRotation = Math.atan2(dy, dx);
-            
-            // 缩放逻辑(基于比例,更自然)
-            const scaleRatio = currentDistance / touchStartDistance;
-            state.scale = Math.max(0.1, Math.min(2, lastScale * scaleRatio));
-            
-            // 旋转逻辑(处理角度跳变)
-            let rotationDelta = (currentRotation - touchStartRotation) * (180 / Math.PI);
-            // 处理角度跳变
-            if (rotationDelta > 180) rotationDelta -= 360;
-            if (rotationDelta < -180) rotationDelta += 360;
-            
-            state.rotation = lastRotation + rotationDelta;
-            
-            updateTransform();
-            
-        }, { passive: false });
-
-        document.addEventListener('touchend', (e) => {
-            if (e.touches.length < 2) {
-                // 手势结束,可以添加额外逻辑
-            }
-        }, { passive: false });
-
-        // === 5. 初始化提示 ===
-        setTimeout(() => {
-            if (!state.isMarkerFound && status) {
-                status.textContent = '💡 扫描识别图开始体验';
-            }
-        }, 3000);
-        
-        // === 6. 测试按钮(调试用) ===
-        console.log('AR脚本已加载,等待A-Frame场景初始化...');
+        // ============================================
+        // 10. 调试信息
+        // ============================================
+        console.log('🎮 AR绘本脚本已加载');
     </script>
 </body>
 </html>
